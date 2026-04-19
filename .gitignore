@@ -1,0 +1,11 @@
+.DS_Store
+.venv/
+__pycache__/
+*.pyc
+*.sqlite3
+node_modules/
+dist/
+.angular/
+.env
+.claude/
+

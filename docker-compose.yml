@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: querymind-postgres
+    environment:
+      POSTGRES_DB: querymind
+      POSTGRES_USER: querymind
+      POSTGRES_PASSWORD: querymind
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U querymind -d querymind"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  django:
+    build:
+      context: ./backend
+    container_name: querymind-django
+    command: sh -c "python manage.py migrate && gunicorn querymind_api.wsgi:application --bind 0.0.0.0:8000 --workers 2 --threads 4"
+    environment:
+      DJANGO_SETTINGS_MODULE: querymind_api.settings.local
+      DJANGO_SECRET_KEY: querymind-dev-secret-key
+      DJANGO_DEBUG: "1"
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      POSTGRES_DB: querymind
+      POSTGRES_USER: querymind
+      POSTGRES_PASSWORD: querymind
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      QUERYMIND_ALLOWED_ORIGINS: http://localhost,http://localhost:80,http://127.0.0.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8000"
+
+  nginx:
+    build:
+      context: ./frontend
+    container_name: querymind-nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - django
+
+volumes:
+  postgres_data:

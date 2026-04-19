@@ -1,0 +1,734 @@
+<canvas #particleCanvas class="particle-canvas" aria-hidden="true"></canvas>
+<canvas #matrixCanvas class="matrix-canvas" *ngIf="matrixModeActive" aria-hidden="true"></canvas>
+<div class="cursor-halo" aria-hidden="true"></div>
+<div class="launch-wipe" *ngIf="transitioning" aria-hidden="true"></div>
+
+<section class="landing" *ngIf="!launched">
+  <div class="hero-content">
+    <div class="live-badge"><span></span>Live Demo Available</div>
+    <h1>
+      <span class="hero-word">Talk</span>
+      <span class="hero-word">to Your</span>
+      <span class="hero-word gradient-text">Database</span>
+    </h1>
+    <p class="hero-subtitle">Type anything. QueryMind translates it to SQL and runs it instantly.</p>
+    <p class="creator-credit">Made by <strong>Sanjeet Singh Tuteja</strong></p>
+    <div class="hero-actions">
+      <button type="button" class="primary-cta" (click)="launchApp()">Launch QueryMind →</button>
+      <a class="ghost-cta" href="https://github.com/" target="_blank" rel="noreferrer">View on GitHub</a>
+    </div>
+  </div>
+
+  <div class="feature-strip">
+    <article>
+      <div class="feature-icon brain"></div>
+      <h2>Natural Language</h2>
+      <p>Schema-aware translation from plain English to SQL.</p>
+    </article>
+    <article>
+      <div class="feature-icon bolt"></div>
+      <h2>Instant SQL</h2>
+      <p>Generated query, execution metadata, and learning context.</p>
+    </article>
+    <article>
+      <div class="feature-icon table"></div>
+      <h2>Live Results</h2>
+      <p>Animated tables, analytics, and transcript-ready views.</p>
+    </article>
+  </div>
+
+</section>
+
+<section class="app-shell" *ngIf="launched">
+  <aside class="sidebar" [class.collapsed]="sidebarCollapsed">
+    <button type="button" class="collapse" (click)="sidebarCollapsed = !sidebarCollapsed">⌘</button>
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <span>QueryMind</span>
+    </div>
+    <nav>
+      <button type="button" [class.active]="activeTab === 'query'" (click)="setTab('query')">Query</button>
+      <button type="button" [class.active]="activeTab === 'history'" (click)="setTab('history')">History</button>
+      <button type="button" [class.active]="activeTab === 'analytics'" (click)="setTab('analytics')">Analytics</button>
+      <button type="button" [class.active]="activeTab === 'er'" (click)="setTab('er')">ER Diagram</button>
+      <button type="button" [class.active]="activeTab === 'schema'" (click)="setTab('schema')">Schema</button>
+      <button type="button" [class.active]="activeTab === 'settings'" (click)="setTab('settings')">Settings</button>
+    </nav>
+    <div class="sidebar-footer">
+      <a href="https://github.com/" target="_blank" rel="noreferrer">GitHub</a>
+      <span>v0.1.0</span>
+    </div>
+  </aside>
+
+  <main class="main-stage">
+    <header class="topnav">
+      <div>
+        <span class="eyebrow">Natural Language SQL Engine</span>
+        <h1>{{ activeTab | titlecase }}</h1>
+      </div>
+      <div class="nav-actions">
+        <div class="db-status"><span></span>Connected to PostgreSQL</div>
+        <button type="button" class="landing-link" (click)="openPalette()">⌘K</button>
+        <button type="button" class="landing-link" (click)="returnToLanding()">← Landing</button>
+        <button type="button" class="landing-link magnet" (click)="toggleReducedMotion()" [class.active]="reduceMotion" title="Toggle reduced motion">{{ reduceMotion ? 'Motion off' : 'Motion on' }}</button>
+        <button type="button" class="theme-toggle magnet" (click)="toggleTheme()" [title]="'Theme: ' + theme">{{ themeIcon(theme) }}</button>
+      </div>
+    </header>
+
+    <div class="metrics-strip" *ngIf="metrics.total_queries > 0">
+      <div><span>Total queries</span><strong>{{ metrics.total_queries }}</strong></div>
+      <div><span>Today</span><strong>{{ metrics.today_queries }}</strong></div>
+      <div><span>Success rate</span><strong>{{ metrics.success_rate ?? 100 }}%</strong></div>
+      <div><span>Avg latency</span><strong>{{ metrics.avg_latency_ms }}ms</strong></div>
+      <div><span>p95 latency</span><strong>{{ metrics.p95_latency_ms }}ms</strong></div>
+      <div><span>Rows returned</span><strong>{{ metrics.rows_returned }}</strong></div>
+      <div><span>Tables touched</span><strong>{{ metrics.unique_tables }}</strong></div>
+    </div>
+
+    <section class="route-panel query-layout" *ngIf="activeTab === 'query'">
+      <section class="query-studio">
+        <div class="query-card">
+          <div class="card-header">
+            <div>
+              <span class="eyebrow">Prompt</span>
+              <h2>Ask your university database</h2>
+            </div>
+            <span class="shortcut">⌘ / Ctrl + Enter</span>
+          </div>
+
+          <div class="input-shell">
+            <textarea
+              id="query-input"
+              [(ngModel)]="naturalLanguage"
+              rows="4"
+              placeholder="Ask anything... e.g. 'Show top 10 students by GPA'"></textarea>
+            <button
+              type="button"
+              class="voice-mic magnet"
+              [class.listening]="voiceListening"
+              [disabled]="!voiceSupported"
+              (click)="toggleVoiceInput()"
+              [title]="voiceSupported ? 'Voice input' : 'Voice not supported'">
+              {{ voiceListening ? '◉' : '🎙' }}
+            </button>
+          </div>
+
+          <div class="chip-row">
+            <button type="button" class="chip" *ngFor="let example of exampleQueries" (click)="useExample(example)">
+              {{ example }}
+            </button>
+          </div>
+
+          <div class="prompt-actions">
+            <button type="button" class="generate-button magnet" [class.loading]="isLoading" (click)="submitQuery()" [disabled]="isLoading">
+              <span *ngIf="!isLoading">{{ followupActive ? 'Refine SQL →' : 'Generate SQL →' }}</span>
+              <span *ngIf="isLoading">Thinking<span class="dots">...</span></span>
+            </button>
+            <button type="button" class="chip" [class.active]="followupActive" (click)="toggleFollowup()" [disabled]="!queryResult">
+              {{ followupActive ? 'Follow-up: ON' : 'Follow-up' }}
+            </button>
+            <button type="button" class="chip" (click)="resetConversation()" *ngIf="conversation.length">Reset chat</button>
+          </div>
+        </div>
+
+        <article class="chat-thread" *ngIf="conversation.length">
+          <div class="table-title"><span class="eyebrow">Chat thread</span><strong>{{ conversation.length }} turns</strong></div>
+          <div class="chat-turn" *ngFor="let turn of conversation" [class.assistant]="turn.role === 'assistant'">
+            <strong>{{ turn.role === 'user' ? 'You' : 'QueryMind' }}</strong>
+            <p>{{ turn.text }}</p>
+            <code *ngIf="turn.sql">{{ turn.sql }}</code>
+            <small *ngIf="turn.rows !== undefined">{{ turn.rows }} rows</small>
+          </div>
+        </article>
+
+        <div class="thinking-overlay" *ngIf="isLoading">
+          <div class="pipeline">
+            <div [class.active]="overlayStage >= 1">Reading Schema <small>Analyzing {{ schema.tables.length || 12 }} tables</small></div>
+            <div [class.active]="overlayStage >= 2">Generating SQL <small>{{ streamTokens[streamTokens.length - 1] || 'Translating your question...' }}</small></div>
+            <div [class.active]="overlayStage >= 3">Executing Query <small>Running against PostgreSQL...</small></div>
+          </div>
+        </div>
+
+        <div class="callout" *ngIf="queryResult">
+          <strong>QueryMind says:</strong> {{ queryResult.explanation }}
+          <div class="callout-actions">
+            <span class="confidence-pill" *ngIf="queryResult.confidence !== undefined">Confidence: {{ (queryResult.confidence * 100).toFixed(0) }}%</span>
+            <button type="button" class="chip" (click)="speakExplanation()" [disabled]="!speechSynthSupported">🔊 Speak</button>
+            <button type="button" class="chip" (click)="saveCurrentQuery()">★ Save</button>
+            <button type="button" class="chip" (click)="copyShareLink()">⇪ Share link</button>
+            <button type="button" class="chip" (click)="loadQueryPlan()">EXPLAIN plan</button>
+            <button type="button" class="chip" (click)="repairCurrentSql()">⚒ Fix it</button>
+          </div>
+        </div>
+
+        <article class="reasoning-card" *ngIf="queryResult?.reasoning">
+          <div class="table-title"><span class="eyebrow">Why this SQL?</span><strong>Claude reasoning</strong></div>
+          <p>{{ queryResult?.reasoning }}</p>
+        </article>
+
+        <article class="plan-card" *ngIf="planLoading || planResponse || planError">
+          <div class="table-title">
+            <span class="eyebrow">Query plan</span>
+            <strong *ngIf="planResponse">{{ planResponse.summary }}</strong>
+            <strong *ngIf="planLoading">Loading EXPLAIN...</strong>
+          </div>
+          <div class="empty-db" *ngIf="planError">{{ planError }}</div>
+          <svg #planTree class="plan-svg" *ngIf="planResponse"></svg>
+        </article>
+
+        <article class="repair-card" *ngIf="repairLoading || repairResponse">
+          <div class="table-title">
+            <span class="eyebrow">Auto-repair</span>
+            <strong *ngIf="repairResponse">{{ repairResponse.fix_summary }}</strong>
+            <strong *ngIf="repairLoading">Repairing...</strong>
+          </div>
+          <pre *ngIf="repairResponse">{{ repairResponse.repaired_sql }}</pre>
+          <small *ngIf="repairResponse">Source: {{ repairResponse.source }}</small>
+        </article>
+
+        <section class="results-grid" [class.universe]="universeMode" *ngIf="queryResult">
+          <article class="sql-panel">
+            <div class="result-meta">
+              <div>
+                <span>Tables used</span>
+                <strong>{{ queryResult.tables_used.length }} · {{ queryResult.tables_used.join(', ') }}</strong>
+              </div>
+              <div>
+                <span>Complexity</span>
+                <strong>{{ queryResult.complexity_level }}</strong>
+              </div>
+              <div>
+                <span>Execution time</span>
+                <strong>{{ queryResult.execution_time }}ms</strong>
+              </div>
+              <button type="button" (click)="copySql()">{{ copied ? 'Copied!' : 'Copy SQL' }}</button>
+            </div>
+            <div #sqlEditor class="monaco-host"></div>
+          </article>
+
+          <article class="table-panel">
+            <div class="table-title">
+              <span class="eyebrow">Output</span>
+              <strong>{{ queryResult.results.length }} rows returned</strong>
+            </div>
+            <div class="export-row">
+              <button type="button" class="chip" (click)="exportResults('csv')">CSV</button>
+              <button type="button" class="chip" (click)="exportResults('json')">JSON</button>
+              <button type="button" class="chip" (click)="exportResults('markdown')">Markdown</button>
+              <button type="button" class="chip" (click)="exportResults('pandas')">Pandas snippet</button>
+            </div>
+            <div class="table-scroll" *ngIf="queryResult.results.length; else emptyState">
+              <table>
+                <thead>
+                  <tr><th *ngFor="let column of displayedColumns">{{ column }}</th></tr>
+                </thead>
+                <tbody>
+                  <tr class="result-row" *ngFor="let row of queryResult.results" (click)="selectRow(row)" [class.selected]="selectedRow === row">
+                    <td *ngFor="let column of displayedColumns">{{ row[column] }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <ng-template #emptyState>
+              <div class="empty-db">No results found. Try a different question.</div>
+            </ng-template>
+          </article>
+
+          <article class="chart-panel" *ngIf="showResultChart">
+            <div class="table-title">
+              <span class="eyebrow">Auto chart</span>
+              <strong>{{ chartLabelColumn }} × {{ chartValueColumn }}</strong>
+            </div>
+            <div class="chart-controls">
+              <button type="button" class="chip" [class.active]="chartType === 'bar'" (click)="setChartType('bar')">Bar</button>
+              <button type="button" class="chip" [class.active]="chartType === 'line'" (click)="setChartType('line')">Line</button>
+              <button type="button" class="chip" [class.active]="chartType === 'pie'" (click)="setChartType('pie')">Pie</button>
+              <select [ngModel]="chartLabelColumn" (ngModelChange)="setChartLabelColumn($event)">
+                <option *ngFor="let column of displayedColumns" [value]="column">{{ column }}</option>
+              </select>
+              <select [ngModel]="chartValueColumn" (ngModelChange)="setChartValueColumn($event)">
+                <option *ngFor="let column of displayedColumns" [value]="column">{{ column }}</option>
+              </select>
+            </div>
+            <svg #resultChart class="result-chart"></svg>
+          </article>
+        </section>
+      </section>
+
+      <aside class="schema-mini">
+        <h2>Schema Browser</h2>
+        <input [(ngModel)]="schemaSearch" placeholder="Search schema" />
+        <div class="schema-table" *ngFor="let table of filteredSchema">
+          <button type="button" (click)="fillTableQuery(table.name)">{{ table.name }}</button>
+          <ul>
+            <li *ngFor="let column of table.columns">
+              <strong>{{ column.name }}</strong>
+              <span>{{ column.type }}</span>
+            </li>
+          </ul>
+        </div>
+
+        <section class="saved-queries" *ngIf="savedQueries.length">
+          <h2>Saved queries</h2>
+          <article *ngFor="let entry of savedQueries">
+            <button type="button" (click)="loadSavedQuery(entry)">{{ entry.label }}</button>
+            <button type="button" class="ghost" (click)="removeSavedQuery(entry.id)">×</button>
+          </article>
+        </section>
+
+        <section class="achievements-list" *ngIf="achievements.length">
+          <h2>Achievements</h2>
+          <div *ngFor="let achievement of achievements">
+            <strong>{{ achievement.title }}</strong>
+            <span>{{ achievement.hint }}</span>
+          </div>
+        </section>
+      </aside>
+    </section>
+
+    <section class="route-panel history-page" *ngIf="activeTab === 'history'">
+      <div class="filter-bar">
+        <button type="button" [class.active]="historyFilter === 'all'" (click)="historyFilter = 'all'">All</button>
+        <button type="button" [class.active]="historyFilter === 'success'" (click)="historyFilter = 'success'">Successful</button>
+        <button type="button" [class.active]="historyFilter === 'failed'" (click)="historyFilter = 'failed'">Failed</button>
+      </div>
+      <article class="history-card" *ngFor="let item of filteredHistory">
+        <span>{{ item.created_at | date:'short' }}</span>
+        <h2>{{ item.user_input }}</h2>
+        <p>{{ item.generated_sql }}</p>
+        <div><strong>{{ item.execution_status }}</strong> · {{ item.execution_time_ms }}ms · {{ item.result_row_count }} rows</div>
+      </article>
+    </section>
+
+    <section class="route-panel analytics-page" *ngIf="activeTab === 'analytics'">
+      <div class="analytics-header">
+        <div>
+          <span class="eyebrow">OLAP Dashboard</span>
+          <h2>Warehouse intelligence layer</h2>
+        </div>
+        <button type="button" class="generate-button" (click)="runEtl()">Run ETL</button>
+      </div>
+      <div class="analytics-summary" *ngIf="analyticsSummary.total_enrollments > 0">
+        <article>
+          <span>Total enrollments</span>
+          <strong>{{ analyticsSummary.total_enrollments }}</strong>
+        </article>
+        <article>
+          <span>Average grade</span>
+          <strong>{{ analyticsSummary.avg_grade_points }}</strong>
+        </article>
+        <article>
+          <span>Attendance</span>
+          <strong>{{ analyticsSummary.avg_attendance_pct }}%</strong>
+        </article>
+        <article>
+          <span>Fees paid</span>
+          <strong>{{ formatAnalyticsValue(analyticsSummary.total_fees_paid, 'fees_paid') }}</strong>
+        </article>
+        <article>
+          <span>Departments</span>
+          <strong>{{ analyticsSummary.departments }}</strong>
+        </article>
+        <article>
+          <span>Active terms</span>
+          <strong>{{ analyticsSummary.active_terms }}</strong>
+        </article>
+      </div>
+      <div class="analytics-controls">
+        <label>
+          <span>Department metric</span>
+          <select [(ngModel)]="analyticsDepartmentMetric" (ngModelChange)="refreshAnalyticsVisuals()">
+            <option value="enrollment_count">Enrollments</option>
+            <option value="avg_grade_points">Average grade</option>
+            <option value="avg_attendance_pct">Attendance %</option>
+            <option value="fees_paid">Fees paid</option>
+          </select>
+        </label>
+        <label>
+          <span>Trend metric</span>
+          <select [(ngModel)]="analyticsTrendMetric" (ngModelChange)="refreshAnalyticsVisuals()">
+            <option value="avg_grade_points">Average grade</option>
+            <option value="avg_attendance_pct">Attendance %</option>
+            <option value="fees_paid">Fees paid</option>
+            <option value="enrollment_count">Enrollments</option>
+          </select>
+        </label>
+        <label>
+          <span>Course mix metric</span>
+          <select [(ngModel)]="analyticsMixMetric" (ngModelChange)="refreshAnalyticsVisuals()">
+            <option value="enrollment_count">Enrollments</option>
+            <option value="avg_grade_points">Average grade</option>
+            <option value="avg_attendance_pct">Attendance %</option>
+          </select>
+        </label>
+      </div>
+      <div class="chart-grid">
+        <article>
+          <h3>Department Performance</h3>
+          <p>{{ analyticsMetricLabel(analyticsDepartmentMetric) }} across top departments.</p>
+          <svg #barChart></svg>
+        </article>
+        <article>
+          <h3>Term Trend</h3>
+          <p>{{ analyticsMetricLabel(analyticsTrendMetric) }} across warehouse time dimensions.</p>
+          <svg #areaChart></svg>
+        </article>
+        <article>
+          <h3>Course Mix</h3>
+          <p>{{ analyticsMetricLabel(analyticsMixMetric) }} by course type.</p>
+          <svg #donutChart></svg>
+        </article>
+        <article>
+          <h3>Query Activity</h3>
+          <p>Hourly query count from the live `query_log` table.</p>
+          <svg #heatmapChart></svg>
+        </article>
+      </div>
+      <div class="analytics-insights">
+        <article class="insight-card">
+          <div class="table-title">
+            <span class="eyebrow">Faculty Impact</span>
+            <strong>Top teaching load</strong>
+          </div>
+          <div class="insight-list" *ngIf="topFacultyImpact.length; else noFacultyImpact">
+            <div *ngFor="let faculty of topFacultyImpact">
+              <strong>{{ faculty.faculty_name }}</strong>
+              <span>{{ faculty.department_name }} · {{ faculty.enrollment_count }} enrollments · {{ faculty.avg_grade_points }} avg grade</span>
+            </div>
+          </div>
+          <ng-template #noFacultyImpact>
+            <div class="empty-db">No faculty impact rows available yet.</div>
+          </ng-template>
+        </article>
+        <article class="insight-card">
+          <div class="table-title">
+            <span class="eyebrow">Rollup Sample</span>
+            <strong>{{ analyticsRows.length }} OLAP rows</strong>
+          </div>
+          <pre *ngIf="analyticsRows.length; else noRollupRows">{{ analyticsRows.slice(0, 6) | json }}</pre>
+          <ng-template #noRollupRows>
+            <div class="empty-db">No rollup rows available yet.</div>
+          </ng-template>
+        </article>
+      </div>
+    </section>
+
+    <section class="route-panel schema-page" *ngIf="activeTab === 'er'">
+      <div class="schema-header">
+        <div>
+          <span class="eyebrow">Entity Relationship Explorer</span>
+          <h2>Interactive ER diagram</h2>
+        </div>
+      </div>
+
+      <article class="er-panel er-page-panel">
+          <div class="table-title">
+            <span class="eyebrow">ER Diagram</span>
+            <strong>{{ erNodes.length }} entities · {{ erEdges.length }} relationships</strong>
+          </div>
+          <div class="graph-modes">
+            <button type="button" class="chip" [class.active]="erGraphMode === 'academic'" (click)="setErGraphMode('academic')">Academic</button>
+            <button type="button" class="chip" [class.active]="erGraphMode === 'finance'" (click)="setErGraphMode('finance')">Finance</button>
+            <button type="button" class="chip" [class.active]="erGraphMode === 'housing'" (click)="setErGraphMode('housing')">Housing</button>
+            <button type="button" class="chip" [class.active]="erGraphMode === 'all'" (click)="setErGraphMode('all')">All tables</button>
+          </div>
+          <div class="er-toolbar">
+            <div class="required-columns er-legend">
+              <span class="required">Focused node</span>
+              <span>Connected node</span>
+              <span>Query-linked node</span>
+              <span>Shift-drag multi-select</span>
+            </div>
+            <div class="er-zoom-controls">
+              <button type="button" (click)="zoomErDiagram(-0.1)">−</button>
+              <strong>{{ (erZoom * 100).toFixed(0) }}%</strong>
+              <button type="button" (click)="zoomErDiagram(0.1)">+</button>
+              <button type="button" (click)="resetErDiagram()">Reset</button>
+            </div>
+          </div>
+          <div #erCanvas class="er-canvas" [class.dragging]="erDragging" (mousedown)="startErPan($event)" (wheel)="onErWheel($event)">
+            <div class="er-stage" [ngStyle]="{ transform: 'translate(' + erPan.x + 'px, ' + erPan.y + 'px) scale(' + erZoom + ')' }">
+            <svg viewBox="0 0 1800 1320" preserveAspectRatio="xMidYMid meet">
+              <g class="er-links">
+                <line
+                  *ngFor="let edge of erEdges"
+                  [class.highlight]="isErEdgeHighlighted(edge)"
+                  [class.query-linked]="isErEdgeQueryLinked(edge)"
+                  [class.hovered]="erHoveredEdgeKey === edge.key"
+                  [attr.x1]="edge.x1"
+                  [attr.y1]="edge.y1"
+                  [attr.x2]="edge.x2"
+                  [attr.y2]="edge.y2"
+                  (mouseenter)="hoverRelationship(edge.key)"
+                  (mouseleave)="clearRelationshipHover()"
+                  (click)="previewRelationship({ from_table: edge.from_table, from_column: edge.from_column, to_table: edge.to_table, to_column: edge.to_column, constraint_name: edge.key })"></line>
+              </g>
+              <g class="er-link-labels">
+                <g
+                  *ngFor="let edge of erEdges"
+                  [class.visible]="isErEdgeLabelVisible(edge)"
+                  [class.highlight]="isErEdgeHighlighted(edge)"
+                  [class.query-linked]="isErEdgeQueryLinked(edge)"
+                  [attr.transform]="'translate(' + ((edge.x1 + edge.x2) / 2) + ',' + (((edge.y1 + edge.y2) / 2) - 6) + ')'">
+                  <rect x="-128" y="-12" width="256" height="18" rx="8"></rect>
+                  <text y="1">
+                    {{ edge.label }}
+                  </text>
+                </g>
+              </g>
+            </svg>
+            <button
+              type="button"
+              class="er-node"
+              *ngFor="let node of erNodes"
+              [class.selected]="isErNodeSelected(node.name)"
+              [class.connected]="!isErNodeSelected(node.name) && isErNodeConnected(node.name)"
+              [class.query-linked]="isErNodeQueryLinked(node.name)"
+              [class.group-selected]="isErNodeGroupSelected(node.name)"
+              [class.kind-master]="node.table.entity_kind === 'master'"
+              [class.kind-transaction]="node.table.entity_kind === 'transaction'"
+              [class.kind-weak]="node.table.entity_kind === 'weak'"
+              (mousedown)="startErNodeDrag($event, node)"
+              (click)="selectErTable(node.name)"
+              [ngStyle]="{ left: node.x + 'px', top: node.y + 'px' }">
+              <div class="er-node-head">
+                <h3>{{ node.name }}</h3>
+                <small>{{ node.connectedCount }} links · {{ node.table.entity_kind }}</small>
+              </div>
+              <ul>
+                <li *ngFor="let column of getSchemaPreviewColumns(node.name)">
+                  <strong>{{ column.name }}</strong>
+                  <span>{{ column.type }}</span>
+                </li>
+              </ul>
+            </button>
+            </div>
+            <div class="er-selection-box" *ngIf="erSelecting || erSelectionBox.width" [ngStyle]="{ left: erSelectionBox.x + 'px', top: erSelectionBox.y + 'px', width: erSelectionBox.width + 'px', height: erSelectionBox.height + 'px' }"></div>
+            <div class="er-minimap">
+              <div class="er-minimap-stage">
+                <div class="er-minimap-node" *ngFor="let node of erNodes" [class.active]="isErNodeSelected(node.name)" [ngStyle]="{ left: (node.x / 1440) * 160 + 'px', top: (node.y / 1080) * 130 + 'px' }"></div>
+                <div class="er-minimap-viewport" [ngStyle]="{ width: erViewportBox.width + 'px', height: erViewportBox.height + 'px', left: erViewportBox.x + 'px', top: erViewportBox.y + 'px' }"></div>
+              </div>
+            </div>
+          </div>
+          <div class="er-inspector" *ngIf="selectedErTable">
+            <div class="table-title">
+              <span class="eyebrow">Selected Entity</span>
+              <strong>{{ selectedErTable.name }}</strong>
+            </div>
+            <div class="er-inspector-grid">
+              <div>
+                <h3>Columns</h3>
+                <ul class="er-detail-list">
+                  <li *ngFor="let column of selectedErTable.columns">
+                    <strong>{{ column.name }}</strong>
+                    <span>{{ column.type }}<small *ngIf="column.constraints.length"> · {{ column.constraints.join(', ') }}</small></span>
+                  </li>
+                </ul>
+              </div>
+              <div>
+                <h3>Relationships</h3>
+                <ul class="er-detail-list">
+                  <li *ngFor="let relationship of selectedErRelationships">
+                    <strong>{{ relationship.from_table }}</strong>
+                    <span>{{ relationship.from_column }} → {{ relationship.to_table }}.{{ relationship.to_column }}</span>
+                    <button type="button" class="chip" (click)="previewRelationship(relationship)">Preview join</button>
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <div class="er-actions">
+              <button type="button" class="chip" (click)="fillTableQuery(selectedErTable.name)">Query Table</button>
+              <button type="button" class="chip" (click)="focusInsertTable(selectedErTable.name)">Insert into Table</button>
+            </div>
+          </div>
+          <div class="er-bottom-sheet">
+            <article class="sheet-card intelligence-card">
+              <div class="table-title">
+                <span class="eyebrow">Node Intelligence</span>
+                <strong>{{ activeTableIntelligence?.table_name || selectedErTableName }}</strong>
+              </div>
+              <div *ngIf="intelligenceLoading" class="empty-db">Loading node intelligence...</div>
+              <div *ngIf="activeTableIntelligence as intelligence" class="intelligence-grid">
+                <div class="result-meta compact">
+                  <div><span>Rows</span><strong>{{ intelligence.row_count }}</strong></div>
+                  <div><span>Indexes</span><strong>{{ intelligence.index_count }}</strong></div>
+                  <div><span>Kind</span><strong>{{ intelligence.entity_kind }}</strong></div>
+                </div>
+                <div class="required-columns">
+                  <span *ngFor="let key of intelligence.primary_keys" class="required">{{ key }}<small>pk</small></span>
+                  <span *ngFor="let key of intelligence.foreign_keys">{{ key }}<small>fk</small></span>
+                </div>
+                <div class="intelligence-columns">
+                  <div>
+                    <h3>Null-rate</h3>
+                    <ul class="er-detail-list">
+                      <li *ngFor="let column of selectedErTable?.columns?.slice(0, 8)">
+                        <strong>{{ column.name }}</strong>
+                        <span>{{ getNullRate(column.name) }}%</span>
+                      </li>
+                    </ul>
+                  </div>
+                  <div>
+                    <h3>Indexes</h3>
+                    <ul class="er-detail-list">
+                      <li *ngFor="let index of intelligence.indexes">
+                        <strong>{{ index.name }}</strong>
+                        <span>{{ index.definition }}</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+                <div class="intelligence-columns">
+                  <div>
+                    <h3>Sample rows</h3>
+                    <pre>{{ intelligence.sample_rows | json }}</pre>
+                  </div>
+                  <div>
+                    <h3>Recent rows</h3>
+                    <pre>{{ intelligence.recent_rows | json }}</pre>
+                  </div>
+                </div>
+                <div>
+                  <h3>Common queries</h3>
+                  <div class="chip-row">
+                    <button type="button" class="chip" *ngFor="let query of intelligence.common_queries" (click)="useCommonQuery(query)">{{ query }}</button>
+                  </div>
+                </div>
+              </div>
+            </article>
+            <article class="sheet-card relationship-card">
+              <div class="table-title">
+                <span class="eyebrow">Relationship Pathway</span>
+                <strong>{{ erRelationshipPreview?.relationship?.from_table || 'Select a relationship' }}</strong>
+              </div>
+              <div *ngIf="erPreviewLoading" class="empty-db">Loading relationship preview...</div>
+              <div *ngIf="erRelationshipPreview as preview">
+                <pre class="relationship-sql">{{ preview.sql }}</pre>
+                <div class="table-title"><span class="eyebrow">Join Sample</span><strong>{{ preview.row_count }} joined rows</strong></div>
+                <pre>{{ preview.rows | json }}</pre>
+              </div>
+            </article>
+          </div>
+      </article>
+    </section>
+
+    <section class="route-panel schema-page" *ngIf="activeTab === 'schema'">
+      <div class="schema-header">
+        <div>
+          <span class="eyebrow">Schema Intelligence</span>
+          <h2>Insert console and serialized schema</h2>
+        </div>
+      </div>
+
+      <div class="schema-workspace schema-workspace-single">
+        <article class="insert-panel">
+          <div class="table-title">
+            <span class="eyebrow">Insert Record</span>
+            <strong>{{ selectedInsertTable?.name || 'Choose a table' }}</strong>
+          </div>
+          <div class="insert-form">
+            <label>
+              <span>Table</span>
+              <select [(ngModel)]="insertTableName" (ngModelChange)="onInsertTableChange()">
+                <option *ngFor="let table of schema.insertable_tables" [value]="table.name">{{ table.name }}</option>
+              </select>
+            </label>
+
+            <div class="required-columns" *ngIf="selectedInsertTable">
+              <span *ngFor="let column of selectedInsertTable.columns" [class.required]="column.required">
+                {{ column.name }}<small>{{ column.required ? 'required' : 'optional' }}</small>
+              </span>
+            </div>
+
+            <label>
+              <span>JSON record payload</span>
+              <textarea [(ngModel)]="insertPayload" rows="12"></textarea>
+            </label>
+
+            <button type="button" class="generate-button" (click)="submitInsertRecord()" [disabled]="insertSubmitting">
+              {{ insertSubmitting ? 'Inserting...' : 'Insert Record' }}
+            </button>
+
+            <p class="insert-error" *ngIf="insertError">{{ insertError }}</p>
+            <pre class="insert-result" *ngIf="insertResult">{{ insertResult | json }}</pre>
+          </div>
+        </article>
+
+        <article class="serialized-schema">
+        <div class="table-title">
+          <span class="eyebrow">Serialized Context</span>
+          <strong>LLM-ready schema snapshot</strong>
+        </div>
+        <pre>{{ schema.serialized || 'Loading schema serialization...' }}</pre>
+        </article>
+      </div>
+    </section>
+
+    <section class="route-panel settings-page" *ngIf="activeTab === 'settings'">
+      <h2>Settings</h2>
+      <p>Theme, keyboard shortcuts, and connection status are persisted locally. Cycle themes (dark / light / oled / sepia) using the moon icon. Press ⌘/Ctrl+K to open the command palette, ⌘/Ctrl+Enter to submit, Escape to clear results, and try the Konami code (↑↑↓↓←→←→ B A).</p>
+      <div class="settings-grid">
+        <article>
+          <h3>Voice + speech</h3>
+          <p>{{ voiceSupported ? 'Voice input enabled' : 'Voice input not supported by this browser' }}.</p>
+          <p>{{ speechSynthSupported ? 'Speak explanations enabled' : 'TTS not available' }}.</p>
+        </article>
+        <article>
+          <h3>Motion</h3>
+          <p>Reduced motion is currently <strong>{{ reduceMotion ? 'on' : 'off' }}</strong>. Toggle from the top nav.</p>
+        </article>
+        <article>
+          <h3>Achievements ({{ achievements.length }})</h3>
+          <ul>
+            <li *ngFor="let achievement of achievements"><strong>{{ achievement.title }}</strong> — {{ achievement.hint }}</li>
+          </ul>
+        </article>
+        <article>
+          <h3>Saved queries ({{ savedQueries.length }})</h3>
+          <ul>
+            <li *ngFor="let entry of savedQueries">{{ entry.label }}</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+  </main>
+</section>
+
+<div class="floating-actions" *ngIf="selectedRow">
+  <button type="button" (click)="copyRow()">Copy Row as JSON</button>
+  <button type="button" (click)="queryRelated()">Query Related Records</button>
+</div>
+
+<div class="toast-stack">
+  <div class="toast" *ngFor="let toast of toasts" [class]="toast.type">{{ toast.message }}<span></span></div>
+</div>
+
+<div class="palette-backdrop" *ngIf="paletteOpen" (click)="closePalette()">
+  <div class="palette-panel" (click)="$event.stopPropagation()">
+    <input id="command-palette-input" [(ngModel)]="paletteQuery" placeholder="Jump to entity, query, or workflow" />
+    <div class="palette-list">
+      <button type="button" *ngFor="let action of filteredCommandActions" (click)="runCommand(action)">
+        <strong>{{ action.label }}</strong>
+        <span>{{ action.hint }}</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="tour-backdrop" *ngIf="showTour">
+  <div class="tour-card">
+    <span class="eyebrow">Guided Tour</span>
+    <h2>{{ ['Open the ER explorer', 'Inspect a live entity', 'Preview joins and data', 'Insert a record'][tourStep] }}</h2>
+    <p>{{ [
+      'Use the ER Diagram tab to move through the database like a design canvas.',
+      'Click a node to load row counts, PK/FK metadata, index coverage, and sample rows.',
+      'Hover or click relationships to preview join pathways, then run related queries.',
+      'Switch into Schema to insert a record with a generated JSON template.'
+    ][tourStep] }}</p>
+    <div class="hero-actions">
+      <button type="button" class="primary-cta" (click)="nextTourStep()">{{ tourStep >= 3 ? 'Finish tour' : 'Next step' }}</button>
+      <button type="button" class="ghost-cta" (click)="dismissTour()">Skip</button>
+    </div>
+  </div>
+</div>

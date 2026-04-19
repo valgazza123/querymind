@@ -1,0 +1,25 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "QueryMindEcrEcsDeploy",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:*",
+        "ecs:*",
+        "elasticloadbalancing:*",
+        "cloudformation:*",
+        "iam:PassRole",
+        "logs:*",
+        "secretsmanager:*",
+        "rds:*",
+        "s3:*",
+        "cloudfront:*",
+        "route53:*",
+        "acm:*",
+        "application-autoscaling:*"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
